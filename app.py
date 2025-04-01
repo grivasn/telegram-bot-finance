@@ -51,7 +51,8 @@ def send_message(chat_id, message):
     requests.post(url, data=payload)
 
 def send_market_summary_to_all():
-    get_and_save_chat_ids() 
+    print(f"📤 Gönderim başladı - {datetime.now().strftime('%H:%M:%S')}")
+    get_and_save_chat_ids()
 
     msg = f"*📊 Günlük Piyasa Özeti - {datetime.now():%d.%m.%Y}*\n\n"
     df_all = pd.DataFrame()
@@ -82,10 +83,13 @@ def send_market_summary_to_all():
         chat_ids = json.load(f)
     for chat_id in chat_ids:
         send_message(chat_id, msg)
-        
-schedule.every().day.at("18:37").do(send_market_summary_to_all)
+        print(f"✅ Mesaj gönderildi: {chat_id}")
+
+
+schedule.every(5).minutes.do(send_market_summary_to_all)
 
 if __name__ == "__main__":
+    print("🟢 Bot çalışıyor - Her 5 dakikada bir mesaj gönderilecek")
     while True:
         schedule.run_pending()
-        time.sleep(1) 
+        time.sleep(1)

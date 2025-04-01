@@ -83,9 +83,9 @@ def send_market_summary_to_all():
     for chat_id in chat_ids:
         send_message(chat_id, msg)
         
-schedule.every().day.at("12:00").do(send_market_summary_to_all)
+schedule.every().day.at("18:37").do(send_market_summary_to_all)
 
 if __name__ == "__main__":
     while True:
         schedule.run_pending()
-        time.sleep(60)  # her 60 saniyede bir kontrol et
+        time.sleep(1) 

@@ -85,11 +85,10 @@ def send_market_summary_to_all():
         send_message(chat_id, msg)
         print(f"✅ Mesaj gönderildi: {chat_id}")
 
-
-schedule.every(5).minutes.do(send_market_summary_to_all)
+schedule.every().day.at("10:00").do(send_market_summary_to_all)
 
 if __name__ == "__main__":
-    print("🟢 Bot çalışıyor - Her 5 dakikada bir mesaj gönderilecek")
+    print("🟢 Bot çalışıyor - Her gün saat 10:00'da mesaj gönderilecek")
     while True:
         schedule.run_pending()
         time.sleep(1)

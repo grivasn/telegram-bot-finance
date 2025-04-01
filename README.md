@@ -24,10 +24,10 @@ send_market_summary_to_all() fonksiyonu ise, kaydedilen chat ID'lerine piyasa ö
 🖱️ Manuel Tetikleme:
 Bot, belirli zamanlamalarla otomatik çalışmak yerine, manuel olarak tetiklenebilir.
 Bu, terminal üzerinden botu çalıştırarak, piyasa verilerini tüm kullanıcılara göndermeyi sağlar.
-main.py dosyasındaki bu fonksiyon, terminalden python main.py komutu ile çalıştırılabilir ve tüm kullanıcılar aynı anda bilgilendirilir.
+app.py dosyasındaki bu fonksiyon, terminalden python main.py komutu ile çalıştırılabilir ve tüm kullanıcılar aynı anda bilgilendirilir.
 
 📂 Dosya Yapısı
-main.py: Botun ana mantığını içerir. Piyasa verilerini alır ve Telegram üzerinden kullanıcılarla paylaşır.
+app.py: Botun ana mantığını içerir. Piyasa verilerini alır ve Telegram üzerinden kullanıcılarla paylaşır.
 veritabani.py: Telegram bot token’ını içerir.
 users.json: Bot ile etkileşimde bulunan kullanıcıların chat ID bilgilerini saklar.
 

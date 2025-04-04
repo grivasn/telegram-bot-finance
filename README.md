@@ -5,4 +5,3 @@ Bu proje, Python, yFinance ve Telegram Bot API kullanarak günlük piyasa verile
 Python: Uygulamanın ana programlama dili olarak kullanılmıştır.
 yFinance: Piyasa verilerini almak için kullanılan Python kütüphanesidir.
 Telegram Bot API: Kullanıcılarla etkileşim sağlamak ve mesaj göndermek için Telegram’ın bot API'si kullanılır.
-JSON: Kullanıcıların chat ID bilgilerini saklamak için JSON formatında dosyalar kullanılır.

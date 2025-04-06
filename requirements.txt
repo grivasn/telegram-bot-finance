@@ -2,3 +2,4 @@ yfinance
 pandas
 schedule
 requests
+matplotlib

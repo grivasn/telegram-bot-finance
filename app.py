@@ -148,13 +148,13 @@ def process_user_requests(last_update_id):
             for ma in ['MA5', 'MA20', 'MA50', 'MA200']:
                 if not df[ma].isnull().all():
                     plt.plot(df[ma], label=ma)
-            plt.title(f"{symbol} - 1 Yıl")
+            plt.title(f"{symbol} - 1 Yıllık Grafiği")
             plt.legend()
             image_path = f"chart_{symbol.replace('.','')}.png"
             plt.savefig(image_path)
             plt.close()
             
-            send_photo(chat_id, image_path, f"{symbol} 1 yıl grafiği")
+            send_photo(chat_id, image_path, f"{symbol} 1 Yıllık Grafiği")
             if os.path.exists(image_path):
                 os.remove(image_path)
 

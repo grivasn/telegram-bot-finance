@@ -173,6 +173,7 @@ def process_user_requests(last_update_id):
                     "- Bir hisse sembolü (örn: BIMAS) yazarak anlık fiyat ve grafik alabilirsiniz.\n"
                     "- /add <hisse> ile portföyünüze hisse ekleyebilir,\n"
                     "  /remove <hisse> ile portföyünüzden çıkarabilir,\n"
+                    "  /live ile portföyünüzdeki hisse fiyatlarını ve değişimlerini canlı görebilirsiniz,\n"         
                     "  /portfoy ile portföyünüzü görebilirsiniz.")
                 print(f"✅ Yeni kullanıcı: {chat_id}")
                 continue

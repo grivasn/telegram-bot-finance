@@ -68,9 +68,7 @@ def send_market_summary_to_all():
     for name, symbol in assets.items():
         try:
             t = yf.Ticker(symbol)
-            price = t.fast_info["lastPrice"]
-
-            hist = t.history(period="2d", interval="1d")["Close"].dropna()
+            hist = t.history(period="5d", interval="1d")["Close"].dropna()
             hist.index = pd.to_datetime(hist.index.date)
             hist = hist[~hist.index.duplicated(keep="last")]
             hist.name = symbol
@@ -78,14 +76,18 @@ def send_market_summary_to_all():
             df_all = df_all.join(hist, how="outer")
 
             if len(hist) >= 2:
+                current_price = hist.iloc[-1]
                 prev_close = hist.iloc[-2]
-                change = ((price - prev_close) / prev_close) * 100
+                change = ((current_price - prev_close) / prev_close) * 100
                 emoji = "🟢" if change > 0 else "🔴" if change < 0 else "⚪️"
-                msg += f"{name}: {price:,.2f} ({emoji} {change:+.2f}%)\n"
+                msg += f"{name}: {current_price:,.2f} ({emoji} {change:+.2f}%)\n"
             else:
-                msg += f"{name}: {price:,.2f} (⚪️ Değişim yok)\n"
+                current_price = hist.iloc[-1]
+                msg += f"{name}: {current_price:,.2f} (⚪️ Değişim yok)\n"
+                
         except Exception as e:
             msg += f"{name}: Veri alınamadı\n"
+            print(f"Error for {symbol}: {str(e)}")
 
     with open(DATA_FILE, "r") as f:
         chat_ids = json.load(f)
@@ -105,87 +107,62 @@ def fetch_ticker(symbol):
     return ticker, symbol
 
 def process_user_requests(last_update_id):
-    """
-    Telegram'dan gelen güncellemeleri kontrol eder.
-    Kullanıcının gönderdiği metin, direkt hisse sembolü olarak kabul edilir.
-    Eğer sembol nokta içermiyorsa, otomatik olarak '.IS' eklenir.
-    Metin özetinin yanı sıra, son 1 yıl verileri üzerinden 5, 20, 50, 200 günlük hareketli ortalamaları içeren grafik gönderilir.
-    """
     url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
-    params = {}
-    if last_update_id:
-        params['offset'] = last_update_id
-    response = requests.get(url, params=params).json()
-    updates = response.get("result", [])
+    params = {'offset': last_update_id} if last_update_id else {}
+    updates = requests.get(url, params=params).json().get("result", [])
+    if not updates:
+        return last_update_id
+
     for update in updates:
-        last_update_id = update["update_id"] + 1  # offset güncellendi
+        last_update_id = update["update_id"] + 1
         try:
-            message = update["message"]
-            chat_id = message["chat"]["id"]
-            symbol = message.get("text", "").strip()  # Kullanıcının girdiği sembol
-            if not symbol:
+            chat_id = update["message"]["chat"]["id"]
+            text = update["message"].get("text", "").strip()
+            if not text:
                 continue
 
-            #  Sembol işleme (otomatik '.IS' ekleme) 
-            t, used_symbol = fetch_ticker(symbol)
-            try:
-                price = t.fast_info["lastPrice"]
-                hist_short = t.history(period="2d", interval="1d")["Close"].dropna()
-                if len(hist_short) >= 2:
-                    prev_close = hist_short.iloc[-2]
-                    change = ((price - prev_close) / prev_close) * 100
-                    emoji = "🟢" if change > 0 else "🔴" if change < 0 else "⚪️"
-                    reply = f"{used_symbol}: {price:,.2f} ({emoji} {change:+.2f}%)"
-                else:
-                    reply = f"{used_symbol}: {price:,.2f} (⚪️ Değişim yok)"
-            except Exception as e:
-                reply = f"{used_symbol}: Veri alınamadı. Lütfen geçerli bir hisse sembolü giriniz."
-            send_message(chat_id, reply)
+            if text.lower() == "/start":
+                get_and_save_chat_ids()
+                send_message(chat_id, "*📈 Hoş Geldiniz!*\n\n"
+                    "Bu bot ile hisse senedi ve piyasa verilerini takip edebilirsiniz.\n"
+                    "- Günlük piyasa özetleri için saat 09:00 ve 18:00'te bildirim alırsınız.\n"
+                    "- Bir hisse sembolü (örn: BIMAS) yazarak anlık fiyat ve grafik alabilirsiniz.\n")
+                print(f"✅ Yeni kullanıcı: {chat_id}")
+                continue
 
-            # Son 1 yıl verilerini çekiyoruz.
+            t, symbol = fetch_ticker(text)
+            price = t.fast_info.get("lastPrice", "Veri yok")
+            hist = t.history(period="2d", interval="1d")["Close"].dropna()
+            reply = f"{symbol}: {price:,.2f}" + (f" ({'🟢' if price > hist.iloc[-2] else '🔴' if price < hist.iloc[-2] else '⚪️'} {((price-hist.iloc[-2])/hist.iloc[-2]*100):+.2f}%)" if len(hist) >= 2 else " (⚪️)")
+            send_message(chat_id, reply if price != "Veri yok" else f"{symbol}: Veri alınamadı")
+
             df = t.history(period="1y")
             if df.empty:
-                continue  # Veri yoksa grafik oluşturmayız
-
-            # Hareketli ortalamaları hesaplıyoruz
-            df['MA5'] = df['Close'].rolling(window=5).mean()
-            df['MA20'] = df['Close'].rolling(window=20).mean()
-            df['MA50'] = df['Close'].rolling(window=50).mean()
-            df['MA200'] = df['Close'].rolling(window=200).mean()
-            
-            # Grafik oluşturma
-            plt.figure(figsize=(10, 6))
-            plt.plot(df.index, df['Close'], label='Close', linewidth=2)
-            if not df['MA5'].isnull().all():
-                plt.plot(df.index, df['MA5'], label='MA5')
-            if not df['MA20'].isnull().all():
-                plt.plot(df.index, df['MA20'], label='MA20')
-            if not df['MA50'].isnull().all():
-                plt.plot(df.index, df['MA50'], label='MA50')
-            if not df['MA200'].isnull().all():
-                plt.plot(df.index, df['MA200'], label='MA200')
-            plt.title(f"{used_symbol} - Son 1 Yıl Fiyat Grafiği")
-            plt.xlabel("Tarih")
-            plt.ylabel("Fiyat")
+                continue
+                
+            for window, label in [(5,'MA5'), (20,'MA20'), (50,'MA50'), (200,'MA200')]:
+                df[label] = df['Close'].rolling(window).mean()
+                
+            plt.figure(figsize=(10,6))
+            plt.plot(df['Close'], label='Close')
+            for ma in ['MA5', 'MA20', 'MA50', 'MA200']:
+                if not df[ma].isnull().all():
+                    plt.plot(df[ma], label=ma)
+            plt.title(f"{symbol} - 1 Yıl")
             plt.legend()
-            plt.tight_layout()
-            
-            # Geçici dosya olarak kaydediyoruz
-            image_path = f"chart_{used_symbol.replace('.', '')}.png"
+            image_path = f"chart_{symbol.replace('.','')}.png"
             plt.savefig(image_path)
             plt.close()
-
-            # Grafiği Telegram'a gönderme
-            caption = f"{used_symbol} için son 1 yıl fiyat grafiği ve hareketli ortalamalar."
-            send_photo(chat_id, image_path, caption=caption)
+            
+            send_photo(chat_id, image_path, f"{symbol} 1 yıl grafiği")
             if os.path.exists(image_path):
                 os.remove(image_path)
 
         except Exception as e:
+            print(f"Hata (chat_id: {chat_id}): {e}")
             continue
+            
     return last_update_id
-
-last_update_id = None
 
 if __name__ == "__main__":
     print("🟢 Bot çalışıyor - Günlük piyasa özetleri (12:00 ve 18:00) ve hisse sorguları aktif")

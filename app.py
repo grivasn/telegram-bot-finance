@@ -199,6 +199,33 @@ def process_user_requests(last_update_id):
                 save_portfolios(portfolios)
                 continue
 
+            if text.lower() == "/live":
+                user_portfolio = portfolios.get(str(chat_id), [])
+                if user_portfolio:
+                    msg = "*📊 Canlı Portföyünüz:*\n\n"
+                    for symbol in user_portfolio:
+                        try:
+                            t, symbol_full = fetch_ticker(symbol)
+                            price = t.fast_info.get("lastPrice", None)
+                            if price is None:
+                                msg += f"{symbol}: Veri alınamadı\n"
+                                continue
+                            hist = t.history(period="2d", interval="1d")["Close"].dropna()
+                            if len(hist) >= 2:
+                                prev_close = hist.iloc[-2]
+                                change = ((price - prev_close) / prev_close) * 100
+                                emoji = "🟢" if change > 0 else "🔴" if change < 0 else "⚪️"
+                                msg += f"{symbol_full}: {price:,.2f} ({emoji} {change:+.2f}%)\n"
+                            else:
+                                msg += f"{symbol_full}: {price:,.2f} (⚪️)\n"
+                        except Exception as e:
+                            msg += f"{symbol}: Veri alınamadı\n"
+                    send_message(chat_id, msg)
+                else:
+                    send_message(chat_id, "Portföyünüz boş. /add <hisse> komutuyla portföyünüze hisse ekleyebilirsiniz.")
+                continue
+
+
             if text.lower().startswith("/remove "):
                 ticker_to_remove = text[8:].strip().upper()
                 if str(chat_id) in portfolios and ticker_to_remove in portfolios[str(chat_id)]:

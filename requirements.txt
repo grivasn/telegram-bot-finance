@@ -3,3 +3,4 @@ pandas
 schedule
 requests
 matplotlib
+cloudscraper

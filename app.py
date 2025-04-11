@@ -257,6 +257,42 @@ def process_user_requests(last_update_id):
                 reply = f"{symbol}: {price:,.2f} (⚪️)"
             send_message(chat_id, reply if price != "Veri yok" else f"{symbol}: Veri alınamadı")
 
+            try:
+                scraper = cloudscraper.CloudScraper()
+                url = "https://api.fintables.com/analyst-ratings/?brokerage_id=&code=&in_model_portfolio"
+                r = scraper.get(url).json()["results"]
+                df = pd.DataFrame(r)
+
+                df["title"] = df["brokerage"].apply(lambda x: x.get("title") if isinstance(x, dict) else None)
+                columns_order = ["code", "title", "type", "published_at", "price_target", "in_model_portfolio"]
+                df = df[columns_order]
+
+                df["published_at"] = pd.to_datetime(df["published_at"]).dt.strftime("%Y-%m-%d")
+                df.columns = ["Hisse Kodu", "Kurum", "Öneri", "Öneri Tarihi", "Fiyat Hedefi", "Model Portföy"]
+                df["Model Portföy"] = df["Model Portföy"].replace({True: "Var", False: "Yok"})
+
+                öneri_df = df[df["Hisse Kodu"] == text.upper()]
+
+                if not öneri_df.empty:
+                    fig, ax = plt.subplots(figsize=(12, len(öneri_df) * 0.6 + 1))
+                    ax.axis('tight')
+                    ax.axis('off')
+                    table = ax.table(cellText=öneri_df.values, colLabels=öneri_df.columns, loc='center', cellLoc='center')
+                    table.auto_set_font_size(False)
+                    table.set_fontsize(10)
+                    table.scale(1.1, 1.1)
+
+                    öneri_image_path = f"oneriler_{text.upper()}.png"
+                    plt.tight_layout()
+                    plt.savefig(öneri_image_path, bbox_inches="tight", dpi=200)
+                    plt.close()
+
+                    send_photo(chat_id, öneri_image_path, f"🔎 *{text.upper()} için Analist Önerileri*")
+                    if os.path.exists(öneri_image_path):
+                        os.remove(öneri_image_path)
+            except Exception as e:
+                print(f"Fintables veri hatası: {e}")
+
             df = t.history(period="1y")
             if df.empty:
                 continue

@@ -8,6 +8,8 @@ import schedule
 import time
 import matplotlib.pyplot as plt 
 from veritabani import TOKEN
+import cloudscraper
+
 
 TOKEN = TOKEN
 USERS_FILE = "users.json"

@@ -94,6 +94,63 @@ def get_and_save_chat_ids():
     except Exception as e:
         print(f"Chat ID'ler alınırken hata: {e}")
 
+def save_alert(chat_id, symbol, target_price):
+    """Kullanıcı için yeni bir alarm kaydeder."""
+    try:
+        supabase.table("alerts").insert({
+            "chat_id": chat_id,
+            "symbol": symbol.upper(),
+            "target_price": float(target_price)
+        }).execute()
+    except Exception as e:
+        print(f"Alarm kaydedilirken hata: {e}")
+
+def remove_alert(chat_id, symbol):
+    """Belirtilen alarmı siler."""
+    try:
+        supabase.table("alerts").delete().eq("chat_id", chat_id).eq("symbol", symbol.upper()).execute()
+    except Exception as e:
+        print(f"Alarm silinirken hata: {e}")
+
+def get_alerts(chat_id):
+    """Kullanıcının aktif alarmlarını döndürür."""
+    try:
+        response = supabase.table("alerts").select("symbol", "target_price").eq("chat_id", chat_id).execute()
+        return response.data
+    except Exception as e:
+        print(f"Alarmlar alınırken hata: {e}")
+        return []
+
+def check_alerts():
+    """Tüm kullanıcıların alarmlarını kontrol eder ve hedef fiyatlara ulaşıldığında bildirim gönderir."""
+    print(f"🔍 Alarm kontrolü başladı - {datetime.now().strftime('%H:%M:%S')}")
+    users = load_users()
+    for chat_id in users:
+        alerts = get_alerts(chat_id)
+        if not alerts:
+            continue
+        for alert in alerts:
+            symbol = alert["symbol"]
+            target_price = alert["target_price"]
+            try:
+                t, symbol_full = fetch_ticker(symbol)
+                current_price = t.fast_info.get("lastPrice", None)
+                if current_price is None:
+                    continue
+                if abs(current_price - target_price) <= 0.01:
+                    send_message(
+                        chat_id,
+                        f"🔔 *{symbol_full}* hedef fiyata ulaştı!\n"
+                        f"Hedef: {target_price:,.2f}\n"
+                        f"Şu anki fiyat: {current_price:,.2f}"
+                    )
+                    # Alarmı sil
+                    remove_alert(chat_id, symbol)
+                    print(f"✅ {chat_id} için {symbol} alarmı tetiklendi ve silindi.")
+            except Exception as e:
+                print(f"{symbol} alarm kontrolünde hata: {e}")
+
+
 def send_message(chat_id, message):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {
@@ -230,7 +287,11 @@ def process_user_requests(last_update_id):
                     "/remove <hisse> ile portföyünüzden çıkarabilir,\n"
                     "/portfoy ile portföyünüzü görebilir,\n"
                     "/stop ile bildirimleri durdurabilirsiniz.\n"
-                    "/live ile portfoy hisse ve kripto paralarınızın canlı fiyatlarını ve düne göre değişimlerini görebilirsiniz." )
+                    "/live ile portfoy hisse ve kripto paralarınızın canlı fiyatlarını ve düne göre değişimlerini görebilirsiniz.\n" 
+                    "/alert <hisse> <fiyat> ile hedef fiyat alarmı oluşturabilirsiniz.\n"
+                    "/remove_alert <hisse> ile hedef fiyat alarmını kaldırabilirsiniz.\n"
+                    "/alert_list ile aktif alarmlarınızı görebilirsiniz.\n\n"
+                    )
                 
                 print(f"✅ Yeni kullanıcı: {chat_id}")
                 continue
@@ -306,6 +367,48 @@ def process_user_requests(last_update_id):
                 else:
                     port_text = "Portföyünüz boş. /add <hisse> komutuyla portföyünüze hisse ekleyebilirsiniz."
                 send_message(chat_id, port_text)
+                continue
+
+            if text.lower().startswith("/alert "):
+                try:
+                    parts = text.split()
+                    if len(parts) != 3:
+                        send_message(chat_id, "Lütfen doğru formatta girin: /alert HİSSE FİYAT")
+                        continue
+                    symbol, target_price = parts[1].upper(), parts[2]
+                    target_price = float(target_price.replace(",", "."))
+                    t, _ = fetch_ticker(symbol)
+                    price = t.fast_info.get("lastPrice", None)
+                    if price is None:
+                        send_message(chat_id, f"🔔 *{symbol}* bulunamadı.")
+                        continue
+                    save_alert(chat_id, symbol, target_price)
+                    send_message(chat_id, f"✅ *{symbol}* için {target_price:,.2f} fiyat alarmı oluşturuldu.")
+                except ValueError:
+                    send_message(chat_id, "Lütfen geçerli bir fiyat girin.")
+                except Exception as e:
+                    send_message(chat_id, f"🔔 *{symbol}* için alarm oluşturulurken hata: {e}")
+                continue
+
+            if text.lower().startswith("/remove_alert "):
+                symbol = text[13:].strip().upper()
+                alerts = get_alerts(chat_id)
+                if any(alert["symbol"] == symbol for alert in alerts):
+                    remove_alert(chat_id, symbol)
+                    send_message(chat_id, f"✅ *{symbol}* alarmı silindi.")
+                else:
+                    send_message(chat_id, f"🔔 *{symbol}* için alarm bulunamadı.")
+                continue
+
+            if text.lower() == "/alert_list":
+                alerts = get_alerts(chat_id)
+                if alerts:
+                    msg = "*📋 Aktif Alarmlarınız:*\n\n"
+                    for alert in alerts:
+                        msg += f"- {alert['symbol']}: {alert['target_price']:,.2f}\n"
+                    send_message(chat_id, msg)
+                else:
+                    send_message(chat_id, "Aktif alarmınız bulunmuyor.")
                 continue
 
             t, symbol = fetch_ticker(text.upper())
@@ -394,6 +497,7 @@ if __name__ == "__main__":
 
     schedule.every().day.at("09:00").do(send_market_summary_to_all)
     schedule.every().day.at("15:00").do(send_market_summary_to_all)
+    schedule.every(2).minutes.do(check_alerts)
 
     while True:
         schedule.run_pending()

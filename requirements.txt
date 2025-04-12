@@ -2,3 +2,6 @@ yfinance
 pandas
 schedule
 requests
+cloudscraper
+matplotlib
+supabase

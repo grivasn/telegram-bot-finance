@@ -224,12 +224,14 @@ def process_user_requests(last_update_id):
                 save_user(chat_id)
                 send_message(chat_id, "*📈 Hoş Geldiniz!*\n\n"
                     "Bu bot ile hisse senedi ve piyasa verilerini takip edebilirsiniz.\n"
-                    "- Günlük piyasa özetleri için belirlenen saatlerde bildirim alırsınız.\n"
+                    "- Günlük piyasa özetleri için 12:00 ve 18:00 saatlerinde bildirim alırsınız.\n"
                     "- Bir hisse sembolü (örneğin: BIMAS) yazarak anlık fiyatını, banka ve yatırım kuruluşlarının tavsiyelerini, hedef fiyatlarını ve hisse grafiğini görüntüleyebilirsiniz.\n"
-                    "- /add <hisse> ile portföyünüze hisse ekleyebilir,\n"
-                    "  /remove <hisse> ile portföyünüzden çıkarabilir,\n"
-                    "  /portfoy ile portföyünüzü görebilir,\n"
-                    "  /stop ile bildirimleri durdurabilirsiniz.")
+                    "/add <hisse> ile portföyünüze hisse ekleyebilir,\n"
+                    "/remove <hisse> ile portföyünüzden çıkarabilir,\n"
+                    "/portfoy ile portföyünüzü görebilir,\n"
+                    "/stop ile bildirimleri durdurabilirsiniz."
+                    "/live ile portfoy hisse ve kripto paralarınızın canlı fiyatlarını ve düne göre değişimlerini görebilirsiniz." )
+                
                 print(f"✅ Yeni kullanıcı: {chat_id}")
                 continue
 

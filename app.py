@@ -229,7 +229,7 @@ def process_user_requests(last_update_id):
                     "/add <hisse> ile portföyünüze hisse ekleyebilir,\n"
                     "/remove <hisse> ile portföyünüzden çıkarabilir,\n"
                     "/portfoy ile portföyünüzü görebilir,\n"
-                    "/stop ile bildirimleri durdurabilirsiniz."
+                    "/stop ile bildirimleri durdurabilirsiniz.\n"
                     "/live ile portfoy hisse ve kripto paralarınızın canlı fiyatlarını ve düne göre değişimlerini görebilirsiniz." )
                 
                 print(f"✅ Yeni kullanıcı: {chat_id}")

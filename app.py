@@ -43,13 +43,18 @@ assets = {
 
 import tempfile
 
+import tempfile
+
 def setup_driver():
     opts = Options()
-    opts.add_argument("--headless=new")
+    opts.add_argument("--headless=new") 
+    opts.add_argument("--disable-gpu")
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-    
-    user_data_dir = tempfile.mkdtemp()
-    opts.add_argument(f"--user-data-dir={user_data_dir}")
+
+    temp_profile = tempfile.mkdtemp()
+    opts.add_argument(f"--user-data-dir={temp_profile}")
 
     opts.add_experimental_option("prefs", {
         "download.default_directory": download_dir,
@@ -59,13 +64,15 @@ def setup_driver():
     })
 
     driver = Chrome(options=opts)
+
     driver.execute_cdp_cmd("Page.setDownloadBehavior", {
         "behavior": "allow",
         "downloadPath": download_dir
     })
 
-    print("✅ Chrome driver başlatıldı.")
+    print("✅ Chrome başlatıldı, geçici profil:", temp_profile)
     return driver
+
 
 
 def download_excel():

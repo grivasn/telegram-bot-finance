@@ -154,10 +154,16 @@ def fetch_fon_data(kullanici_fon, chat_id):
         send_message(chat_id, msg)
 
     headers = {
-        'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:63.0) Gecko/20100101 Firefox/63.0"
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept-Language': 'tr-TR,tr;q=0.9',
+    'Referer': 'https://www.tefas.gov.tr/',
     }
+    cookies = {
+    'ASP.NET_SessionId': 'xyz123',
+    }
+
     try:
-        with requests.get(f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={kullanici_fon}", headers=headers) as url:
+        with requests.get(f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={kullanici_fon}", headers=headers, cookies=cookies , timeout=10) as url:
             data = url.content
         soup = BeautifulSoup(data, features="html.parser")
         js_text = soup.find_all('script', type="text/javascript")

@@ -9,3 +9,4 @@ python-dotenv
 selenium
 webdriver-manager
 openpyxl
+beautifulsoup4

@@ -27,7 +27,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 if not TOKEN:
     raise ValueError("Hata: TOKEN bulunamadı. Lütfen .env dosyasında TOKEN değerini tanımlayın.")
 
-download_dir = os.path.abspath("downloads")
+download_dir = "/tmp/downloads"
 os.makedirs(download_dir, exist_ok=True)
 excel_file_path = os.path.join(download_dir, "tefas_funds.xls")
 

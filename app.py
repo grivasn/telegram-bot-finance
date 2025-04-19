@@ -10,6 +10,12 @@ from veritabani import TOKEN
 import cloudscraper
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from selenium.webdriver import Chrome
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import glob
 
 load_dotenv()
 
@@ -19,6 +25,10 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 if not TOKEN:
     raise ValueError("Hata: TOKEN bulunamadı. Lütfen .env dosyasında TOKEN değerini tanımlayın.")
+
+download_dir = os.path.abspath("downloads")
+os.makedirs(download_dir, exist_ok=True)
+excel_file_path = os.path.join(download_dir, "tefas_funds.xls")
 
 assets = {
     '📈 BIST100': 'XU100.IS',
@@ -30,6 +40,89 @@ assets = {
     '🟡 Bitcoin-(USD)': 'BTC-USD',
     '💎 ETH-(USD)': 'ETH-USD',
 }
+
+def setup_driver():
+    opts = Options()
+    opts.add_argument("--headless")
+    opts.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+    opts.add_experimental_option("prefs", {
+        "download.default_directory": download_dir,
+        "download.prompt_for_download": False,
+        "download.directory_upgrade": True,
+        "safebrowsing.enabled": True
+    })
+    driver = Chrome(options=opts)
+    driver.execute_cdp_cmd("Page.setDownloadBehavior", {"behavior": "allow", "downloadPath": download_dir})
+    return driver
+
+def download_excel():
+    with setup_driver() as driver:
+        driver.get("https://www.tefas.gov.tr/FonKarsilastirma.aspx")
+        try:
+            btn = WebDriverWait(driver, 40).until(
+                EC.element_to_be_clickable((By.XPATH, '//*[@id="table_fund_returns_wrapper"]//button[3]'))
+            )
+            btn.click()
+            time.sleep(15)
+            file = next(iter(glob.glob(os.path.join(download_dir, "*.xls*"))), None)
+            if not file:
+                print("Dosya bulunamadı.")
+                return False
+            if os.path.exists(excel_file_path):
+                os.remove(excel_file_path)
+            os.rename(file, excel_file_path)
+            print("Excel dosyası başarıyla indirildi.")
+            return True
+        except Exception as e:
+            print(f"Excel indirme hatası: {e}")
+            return False
+
+def fetch_fon_data(kullanici_fon, chat_id):
+    if not os.path.exists(excel_file_path):
+        print("Excel dosyası bulunamadı, indiriliyor...")
+        if not download_excel():
+            send_message(chat_id, "Excel dosyası indirilemedi, işlem iptal edildi.")
+            return
+
+    try:
+        fon_kodlari = pd.Series(pd.read_excel(excel_file_path).iloc[:, 0]).dropna().unique()[1:]
+    except Exception as e:
+        send_message(chat_id, f"Excel okuma hatası: {e}")
+        return
+
+    if kullanici_fon not in fon_kodlari:
+        send_message(chat_id, f"🔔 *{kullanici_fon}* fon kodu bulunamadı.")
+        return
+
+    with setup_driver() as driver:
+        driver.get(f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={kullanici_fon}")
+        
+        xpaths = {
+            "Fiyat": '//*[@id="MainContent_PanelInfo"]/div[1]/ul[1]/li[1]/span',
+            "Günlük Getiri": '//*[@id="MainContent_PanelInfo"]/div[1]/ul[1]/li[2]/span',
+            "Yatırımcı Sayısı": '//*[@id="MainContent_PanelInfo"]/div[1]/ul[2]/li[2]/span',
+            "Fon Risk Seviyesi": '//*[@id="MainContent_DetailsViewFund"]/tbody/tr[15]/td[2]',
+            "Son 1 Ay Getirisi": '//*[@id="MainContent_PanelInfo"]/div[2]/ul/li[1]/span',
+            "Son 3 Ay Getirisi": '//*[@id="MainContent_PanelInfo"]/div[2]/ul/li[2]/span',
+            "Son 6 Ay Getirisi": '//*[@id="MainContent_PanelInfo"]/div[2]/ul/li[3]/span',
+            "Son 1 Yıl Getirisi": '//*[@id="MainContent_PanelInfo"]/div[2]/ul/li[4]/span'
+        }
+        
+        data = {"Fon Adı": kullanici_fon}
+        for key, xpath in xpaths.items():
+            try:
+                data[key] = WebDriverWait(driver, 20).until(
+                    EC.visibility_of_element_located((By.XPATH, xpath))
+                ).text
+            except Exception:
+                data[key] = "Bilgi alınamadı"
+
+        df = pd.DataFrame([data])
+        msg = f"*📈 Fon Bilgileri: {kullanici_fon}*\n\n"
+        for key, value in data.items():
+            if key != "Fon Adı":
+                msg += f"{key}: {value}\n"
+        send_message(chat_id, msg)
 
 def load_users():
     try:
@@ -95,7 +188,6 @@ def get_and_save_chat_ids():
         print(f"Chat ID'ler alınırken hata: {e}")
 
 def save_alert(chat_id, symbol, target_price):
-    """Kullanıcı için yeni bir alarm kaydeder."""
     try:
         supabase.table("alerts").insert({
             "chat_id": chat_id,
@@ -106,14 +198,12 @@ def save_alert(chat_id, symbol, target_price):
         print(f"Alarm kaydedilirken hata: {e}")
 
 def remove_alert(chat_id, symbol):
-    """Belirtilen alarmı siler."""
     try:
         supabase.table("alerts").delete().eq("chat_id", chat_id).eq("symbol", symbol.upper()).execute()
     except Exception as e:
         print(f"Alarm silinirken hata: {e}")
 
 def get_alerts(chat_id):
-    """Kullanıcının aktif alarmlarını döndürür."""
     try:
         response = supabase.table("alerts").select("symbol", "target_price").eq("chat_id", chat_id).execute()
         return response.data
@@ -122,7 +212,6 @@ def get_alerts(chat_id):
         return []
 
 def check_alerts():
-    """Tüm kullanıcıların alarmlarını kontrol eder ve hedef fiyatlara ulaşıldığında bildirim gönderir."""
     print(f"🔍 Alarm kontrolü başladı - {datetime.now().strftime('%H:%M:%S')}")
     users = load_users()
     for chat_id in users:
@@ -144,12 +233,10 @@ def check_alerts():
                         f"Hedef: {target_price:,.2f}\n"
                         f"Şu anki fiyat: {current_price:,.2f}"
                     )
-                    # Alarmı sil
                     remove_alert(chat_id, symbol)
                     print(f"✅ {chat_id} için {symbol} alarmı tetiklendi ve silindi.")
             except Exception as e:
                 print(f"{symbol} alarm kontrolünde hata: {e}")
-
 
 def send_message(chat_id, message):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -266,6 +353,13 @@ def process_user_requests(last_update_id):
 
     portfolios = load_portfolios()
 
+    fon_kodlari = []
+    if os.path.exists(excel_file_path):
+        try:
+            fon_kodlari = pd.Series(pd.read_excel(excel_file_path).iloc[:, 0]).dropna().unique()[1:]
+        except Exception as e:
+            print(f"Excel okuma hatası (fon kodları): {e}")
+
     for update in updates:
         last_update_id = update["update_id"] + 1
         try:
@@ -280,19 +374,18 @@ def process_user_requests(last_update_id):
             if text.lower() == "/start":
                 save_user(chat_id)
                 send_message(chat_id, "*📈 Hoş Geldiniz!*\n\n"
-                    "Bu bot ile hisse senedi ve piyasa verilerini takip edebilirsiniz.\n"
+                    "Bu bot ile hisse senedi, fon ve piyasa verilerini takip edebilirsiniz.\n"
                     "- Günlük piyasa özetleri için 12:00 ve 18:00 saatlerinde bildirim alırsınız.\n"
-                    "- Bir hisse sembolü (örneğin: BIMAS) yazarak anlık fiyatını, banka ve yatırım kuruluşlarının tavsiyelerini, hedef fiyatlarını ve hisse grafiğini görüntüleyebilirsiniz.\n"
+                    "- Bir hisse sembolü (örneğin: BIMAS) veya fon kodu (örneğin: TLY) yazarak anlık fiyatını, analizlerini ve grafiğini görüntüleyebilirsiniz.\n"
                     "/add <hisse> ile portföyünüze hisse ekleyebilir,\n"
                     "/remove <hisse> ile portföyünüzden çıkarabilir,\n"
                     "/portfoy ile portföyünüzü görebilir,\n"
                     "/stop ile bildirimleri durdurabilirsiniz.\n"
                     "/live ile portfoy hisse ve kripto paralarınızın canlı fiyatlarını ve düne göre değişimlerini görebilirsiniz.\n" 
                     "/alert <hisse> <fiyat> ile hedef fiyat alarmı oluşturabilirsiniz.\n"
-                    "/remove\_alert <hisse> ile hedef fiyat alarmını kaldırabilirsiniz.\n"
-                    "/alert\_list ile aktif alarmlarınızı görebilirsiniz.\n\n"
-                    )
-                
+                    "/remove_alert <hisse> ile hedef fiyat alarmını kaldırabilirsiniz.\n"
+                    "/alert_list ile aktif alarmlarınızı görebilirsiniz.\n\n"
+                )
                 print(f"✅ Yeni kullanıcı: {chat_id}")
                 continue
 
@@ -411,7 +504,12 @@ def process_user_requests(last_update_id):
                     send_message(chat_id, "Aktif alarmınız bulunmuyor.")
                 continue
 
-            t, symbol = fetch_ticker(text.upper())
+            symbol = text.upper()
+            if symbol in fon_kodlari:
+                fetch_fon_data(symbol, chat_id)
+                continue
+
+            t, symbol = fetch_ticker(symbol)
             price = t.fast_info.get("lastPrice", "Veri yok")
             hist = t.history(period="2d", interval="1d")["Close"].dropna()
             if len(hist) >= 2:
@@ -429,23 +527,36 @@ def process_user_requests(last_update_id):
                 df = pd.DataFrame(r)
 
                 df["title"] = df["brokerage"].apply(lambda x: x.get("title") if isinstance(x, dict) else None)
-                columns_order = ["code", "title", "type", "published_at", "price_target", "in_model_portfolio"]
-                df = df[columns_order]
-
+                df = df[["code", "title", "type", "published_at", "price_target", "in_model_portfolio"]]
                 df["published_at"] = pd.to_datetime(df["published_at"]).dt.strftime("%Y-%m-%d")
                 df.columns = ["Hisse Kodu", "Kurum", "Öneri", "Öneri Tarihi", "Fiyat Hedefi", "Model Portföy"]
                 df["Model Portföy"] = df["Model Portföy"].replace({True: "Var", False: "Yok"})
 
-                öneri_df = df[df["Hisse Kodu"] == text.upper()]
+                öneri_df = df[df["Hisse Kodu"] == text.upper()].copy()
 
                 if not öneri_df.empty:
-                    fig, ax = plt.subplots(figsize=(12, len(öneri_df) * 0.6 + 1))
+                    t, symbol_full = fetch_ticker(text.upper())
+                    current_price = t.fast_info.get("lastPrice", None)
+                    
+                    if current_price:
+                        öneri_df.loc[:, "Son Fiyat"] = round(current_price, 2)
+                        öneri_df.loc[:, "Getiri Potansiyeli"] = (öneri_df["Fiyat Hedefi"].astype(float) - current_price).round(2)
+                        öneri_df.loc[:, "Getiri Potansiyeli (%)"] = (öneri_df["Getiri Potansiyeli"] / current_price * 100).round(2).astype(str) + "%"
+                        columns = ["Hisse Kodu", "Kurum", "Öneri", "Öneri Tarihi", "Fiyat Hedefi", "Son Fiyat", 
+                                "Getiri Potansiyeli", "Getiri Potansiyeli (%)", "Model Portföy"]
+                        öneri_df = öneri_df[columns]
+                    else:
+                        öneri_df.loc[:, "Son Fiyat"] = "Veri yok"
+                        öneri_df.loc[:, "Getiri Potansiyeli"] = "Veri yok"
+                        öneri_df.loc[:, "Getiri Potansiyeli (%)"] = "Veri yok"
+
+                    fig, ax = plt.subplots(figsize=(14, len(öneri_df) * 0.6 + 1))
                     ax.axis('tight')
                     ax.axis('off')
                     table = ax.table(cellText=öneri_df.values, colLabels=öneri_df.columns, loc='center', cellLoc='center')
                     table.auto_set_font_size(False)
                     table.set_fontsize(10)
-                    table.scale(1.1, 1.1)
+                    table.scale(1.2, 1.1)
 
                     öneri_image_path = f"oneriler_{text.upper()}.png"
                     plt.tight_layout()
@@ -485,6 +596,9 @@ def process_user_requests(last_update_id):
 
 if __name__ == "__main__":
     print("🟢 Bot çalışıyor - Günlük piyasa özetleri ve hisse sorguları aktif")
+    print("İlk Excel dosyası indiriliyor...")
+    download_excel()
+
     try:
         init_updates = requests.get(f"https://api.telegram.org/bot{TOKEN}/getUpdates").json().get("result", [])
         if init_updates:
@@ -498,6 +612,7 @@ if __name__ == "__main__":
     schedule.every().day.at("09:00").do(send_market_summary_to_all)
     schedule.every().day.at("15:00").do(send_market_summary_to_all)
     schedule.every(2).minutes.do(check_alerts)
+    schedule.every().day.at("12:00").do(download_excel)
 
     while True:
         schedule.run_pending()

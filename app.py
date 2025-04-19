@@ -41,25 +41,32 @@ assets = {
     '💎 ETH-(USD)': 'ETH-USD',
 }
 
+import tempfile
+
 def setup_driver():
     opts = Options()
     opts.add_argument("--headless=new")
-    opts.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+    opts.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+    
+    user_data_dir = tempfile.mkdtemp()
+    opts.add_argument(f"--user-data-dir={user_data_dir}")
+
     opts.add_experimental_option("prefs", {
         "download.default_directory": download_dir,
         "download.prompt_for_download": False,
-        "download.directory_upgrade": True,
+        "directory_upgrade": True,
         "safebrowsing.enabled": True
     })
+
     driver = Chrome(options=opts)
-    driver.execute_cdp_cmd("Page.setDownloadBehavior", {"behavior": "allow", "downloadPath": download_dir})
+    driver.execute_cdp_cmd("Page.setDownloadBehavior", {
+        "behavior": "allow",
+        "downloadPath": download_dir
+    })
 
     print("✅ Chrome driver başlatıldı.")
-    print("🗂️ İndirme dizini:", download_dir)
-    print("📂 Klasör var mı?:", os.path.exists(download_dir))
-    print("📄 Klasör içeriği:", os.listdir(download_dir) if os.path.exists(download_dir) else "Klasör bulunamadı")
-
     return driver
+
 
 def download_excel():
     with setup_driver() as driver:

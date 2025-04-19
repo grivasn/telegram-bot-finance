@@ -41,19 +41,33 @@ assets = {
     '💎 ETH-(USD)': 'ETH-USD',
 }
 
+from selenium.webdriver.chrome.service import Service
+import shutil
+
 def setup_driver():
+    chrome_path = shutil.which("google-chrome") or shutil.which("chromium-browser")
+    if not chrome_path:
+        raise EnvironmentError("Google Chrome veya Chromium yüklü değil.")
+
     opts = Options()
-    opts.add_argument("--headless")
+    opts.add_argument("--headless=new") 
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("--disable-gpu")
     opts.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+
     opts.add_experimental_option("prefs", {
         "download.default_directory": download_dir,
         "download.prompt_for_download": False,
         "download.directory_upgrade": True,
         "safebrowsing.enabled": True
     })
-    driver = Chrome(options=opts)
+
+    service = Service() 
+    driver = Chrome(service=service, options=opts)
     driver.execute_cdp_cmd("Page.setDownloadBehavior", {"behavior": "allow", "downloadPath": download_dir})
     return driver
+
 
 def download_excel():
     with setup_driver() as driver:

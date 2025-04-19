@@ -16,7 +16,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import glob
-import traceback
 
 load_dotenv()
 
@@ -27,7 +26,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 if not TOKEN:
     raise ValueError("Hata: TOKEN bulunamadı. Lütfen .env dosyasında TOKEN değerini tanımlayın.")
 
-download_dir = "/tmp/downloads"
+download_dir = os.path.abspath("downloads")
 os.makedirs(download_dir, exist_ok=True)
 excel_file_path = os.path.join(download_dir, "tefas_funds.xls")
 
@@ -44,28 +43,23 @@ assets = {
 
 def setup_driver():
     opts = Options()
-    opts.add_argument("--headless=new") 
-    opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-dev-shm-usage")
-    opts.add_argument("--disable-gpu")
-    opts.add_argument("--disable-software-rasterizer")
-    opts.add_argument("--disable-dev-tools")
-    opts.add_argument("--window-size=1920x1080")
+    opts.add_argument("--headless=new")
     opts.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-
     opts.add_experimental_option("prefs", {
         "download.default_directory": download_dir,
         "download.prompt_for_download": False,
         "download.directory_upgrade": True,
         "safebrowsing.enabled": True
     })
-
     driver = Chrome(options=opts)
-    driver.execute_cdp_cmd("Page.setDownloadBehavior", {
-        "behavior": "allow", "downloadPath": download_dir
-    })
-    return driver
+    driver.execute_cdp_cmd("Page.setDownloadBehavior", {"behavior": "allow", "downloadPath": download_dir})
 
+    print("✅ Chrome driver başlatıldı.")
+    print("🗂️ İndirme dizini:", download_dir)
+    print("📂 Klasör var mı?:", os.path.exists(download_dir))
+    print("📄 Klasör içeriği:", os.listdir(download_dir) if os.path.exists(download_dir) else "Klasör bulunamadı")
+
+    return driver
 
 def download_excel():
     with setup_driver() as driver:
@@ -75,21 +69,26 @@ def download_excel():
                 EC.element_to_be_clickable((By.XPATH, '//*[@id="table_fund_returns_wrapper"]//button[3]'))
             )
             btn.click()
+
+            print("📥 Excel indirme butonuna tıklandı, bekleniyor...")
             time.sleep(15)
+
+            print("📂 Sonraki klasör içeriği:", os.listdir(download_dir))
+
             file = next(iter(glob.glob(os.path.join(download_dir, "*.xls*"))), None)
             if not file:
-                print("Dosya bulunamadı.")
+                print("❌ Dosya bulunamadı.")
                 return False
+
             if os.path.exists(excel_file_path):
                 os.remove(excel_file_path)
             os.rename(file, excel_file_path)
-            print("Excel dosyası başarıyla indirildi.")
+
+            print("✅ Excel başarıyla indirildi:", excel_file_path)
             return True
+
         except Exception as e:
-            print(f"Excel indirme hatası: {e}")
-        except Exception as e:
-            print("Excel indirme hatası:")
-            traceback.print_exc()
+            print(f"❌ Excel indirme hatası: {e}")
             return False
 
 

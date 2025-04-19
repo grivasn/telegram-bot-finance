@@ -8,3 +8,4 @@ supabase
 python-dotenv
 selenium
 webdriver-manager
+openpyxl

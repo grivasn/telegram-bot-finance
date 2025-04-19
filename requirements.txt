@@ -7,3 +7,4 @@ matplotlib
 supabase
 python-dotenv
 selenium
+webdriver-manager

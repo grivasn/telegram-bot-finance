@@ -6,4 +6,4 @@ cloudscraper
 matplotlib
 supabase
 python-dotenv
-
+selenium

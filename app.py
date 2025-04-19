@@ -16,6 +16,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import glob
+import tempfile
+from bs4 import BeautifulSoup
+
 
 load_dotenv()
 
@@ -41,9 +44,6 @@ assets = {
     '💎 ETH-(USD)': 'ETH-USD',
 }
 
-import tempfile
-
-import tempfile
 
 def setup_driver():
     opts = Options()
@@ -152,6 +152,61 @@ def fetch_fon_data(kullanici_fon, chat_id):
             if key != "Fon Adı":
                 msg += f"{key}: {value}\n"
         send_message(chat_id, msg)
+
+    headers = {
+        'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:63.0) Gecko/20100101 Firefox/63.0"
+    }
+    try:
+        with requests.get(f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={kullanici_fon}", headers=headers) as url:
+            data = url.content
+        soup = BeautifulSoup(data, features="html.parser")
+        js_text = soup.find_all('script', type="text/javascript")
+        
+        kacinci = None
+        for fiyat in range(len(js_text)):
+            if len(js_text[fiyat].contents) == 0:
+                continue
+            if js_text[fiyat].contents[0].find("chartMainContent_FonFiyatGrafik") > 0:
+                kacinci = fiyat
+                break
+        
+        if kacinci is None:
+            send_message(chat_id, f"🔔 *{kullanici_fon}* için fiyat grafiği verisi bulunamadı.")
+            return
+
+        tarih_rakam = js_text[kacinci].contents[0].split("categories")
+        tarih = tarih_rakam[1].split("]")[0].split("[")[1]
+        rakam = tarih_rakam[1].split("[")[4].split("]")[0]
+
+        df = pd.DataFrame(columns=["Tarih", "Fiyat"])
+        df["Tarih"] = tarih.split(",")
+        df["Fiyat"] = rakam.split(",")
+
+        df["Tarih"] = df["Tarih"].str.replace('"', '')
+        df["Fiyat"] = df["Fiyat"].str.replace('"', '')
+
+        df["Tarih"] = pd.to_datetime(df["Tarih"], format="%d.%m.%Y")
+        df["Fiyat"] = pd.to_numeric(df["Fiyat"], errors='coerce')
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(df["Tarih"], df["Fiyat"], label="Fiyat")
+        plt.title(f"{kullanici_fon} - Fiyat Grafiği")
+        plt.xlabel("Tarih")
+        plt.ylabel("Fiyat")
+        plt.legend()
+
+        image_path = f"fon_chart_{kullanici_fon}.png"
+        plt.savefig(image_path, bbox_inches="tight", dpi=200)
+        plt.close()
+
+        send_photo(chat_id, image_path, f"*{kullanici_fon}* 1 Yıllık Fiyat Grafiği")
+
+        if os.path.exists(image_path):
+            os.remove(image_path)
+
+    except Exception as e:
+        send_message(chat_id, f"🔔 *{kullanici_fon}* için fiyat grafiği oluşturulurken hata: {e}")
+        print(f"Fiyat grafiği hatası: {e}")
 
 def load_users():
     try:

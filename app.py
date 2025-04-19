@@ -15,7 +15,9 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
 import glob
+import tempfile
 
 load_dotenv()
 
@@ -41,69 +43,53 @@ assets = {
     '💎 ETH-(USD)': 'ETH-USD',
 }
 
-import tempfile
-
-import tempfile
-
 def setup_driver():
-    opts = Options()
-    opts.add_argument("--headless=new") 
-    opts.add_argument("--disable-gpu")
-    opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-dev-shm-usage")
-    opts.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+    options = Options()
+    options.binary_location = "/usr/bin/chromium"
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("user-agent=Mozilla/5.0")
+    options.add_argument("window-size=1920x1080")
 
-    temp_profile = tempfile.mkdtemp()
-    opts.add_argument(f"--user-data-dir={temp_profile}")
-
-    opts.add_experimental_option("prefs", {
+    options.add_experimental_option("prefs", {
         "download.default_directory": download_dir,
         "download.prompt_for_download": False,
         "directory_upgrade": True,
         "safebrowsing.enabled": True
     })
 
-    driver = Chrome(options=opts)
-
+    service = Service("/usr/bin/chromedriver")
+    driver = Chrome(service=service, options=options)
     driver.execute_cdp_cmd("Page.setDownloadBehavior", {
         "behavior": "allow",
         "downloadPath": download_dir
     })
 
-    print("✅ Chrome başlatıldı, geçici profil:", temp_profile)
     return driver
-
-
 
 def download_excel():
     with setup_driver() as driver:
         driver.get("https://www.tefas.gov.tr/FonKarsilastirma.aspx")
         try:
-            btn = WebDriverWait(driver, 40).until(
+            btn = WebDriverWait(driver, 30).until(
                 EC.element_to_be_clickable((By.XPATH, '//*[@id="table_fund_returns_wrapper"]//button[3]'))
             )
             btn.click()
-
-            print("📥 Excel indirme butonuna tıklandı, bekleniyor...")
+            print("📥 Excel indiriliyor...")
             time.sleep(15)
-
-            print("📂 Sonraki klasör içeriği:", os.listdir(download_dir))
-
-            file = next(iter(glob.glob(os.path.join(download_dir, "*.xls*"))), None)
-            if not file:
-                print("❌ Dosya bulunamadı.")
-                return False
-
-            if os.path.exists(excel_file_path):
-                os.remove(excel_file_path)
-            os.rename(file, excel_file_path)
-
-            print("✅ Excel başarıyla indirildi:", excel_file_path)
-            return True
-
         except Exception as e:
-            print(f"❌ Excel indirme hatası: {e}")
-            return False
+            print(f"Hata: {e}")
+
+    files = glob.glob(os.path.join(download_dir, "*.xls*"))
+    if files:
+        print("✅ İndirilen dosya:", files[0])
+    else:
+        print("❌ Excel dosyası bulunamadı.")
+
+if __name__ == "__main__":
+    print("🚀 Selenium Excel İndirme Başladı")
+    download_excel()
 
 
 def fetch_fon_data(kullanici_fon, chat_id):

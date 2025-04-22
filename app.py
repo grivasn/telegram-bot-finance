@@ -564,8 +564,8 @@ def process_user_requests(last_update_id):
                     "- /stop ile bildirimleri durdurabilirsiniz.\n"
                     "- /live ile portföy hisse ve kripto paralarınızın canlı fiyatlarını, düne göre değişimlerini ve kâr/zararınızı görebilirsiniz.\n"
                     "- /alert <hisse> <fiyat> ile hedef fiyat alarmı oluşturabilirsiniz.\n"
-                    "- /remove_alert\\ <hisse> ile hedef fiyat alarmını kaldırabilirsiniz.\n"
-                    "- /alert_list\\ ile aktif alarmlarınızı görebilirsiniz.\n\n"
+                    "- /remove\\_alert <hisse> ile hedef fiyat alarmını kaldırabilirsiniz.\n"
+                    "- /alert\\_list ile aktif alarmlarınızı görebilirsiniz.\n\n"
                 )
                 print(f"✅ Yeni kullanıcı: {chat_id}")
                 continue

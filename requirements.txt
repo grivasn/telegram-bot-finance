@@ -10,3 +10,4 @@ selenium
 webdriver-manager
 openpyxl
 beautifulsoup4
+seaborn

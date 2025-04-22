@@ -18,6 +18,7 @@ from selenium.webdriver.support import expected_conditions as EC
 import glob
 import tempfile
 from bs4 import BeautifulSoup
+import seaborn as sns
 
 load_dotenv()
 
@@ -433,6 +434,84 @@ def fetch_ticker(symbol):
     ticker = yf.Ticker(symbol)
     return ticker, symbol
 
+def send_live_visualization(chat_id, user_portfolio):
+
+    df = pd.DataFrame(user_portfolio)
+    df['current_price'] = df['symbol'].apply(
+        lambda sym: fetch_ticker(sym)[0].fast_info.get("lastPrice", 0)
+    )
+    df['cost']  = df['quantity'] * df['avg_price']
+    df['value'] = df['quantity'] * df['current_price']
+    df['pnl']   = df['value'] - df['cost']
+
+    total_cost  = df['cost'].sum()
+    total_value = df['value'].sum()
+    total_pnl   = df['pnl'].sum()
+    total_roi   = (total_pnl / total_cost * 100) if total_cost else 0
+
+    sns.set_style('whitegrid')
+    colors = sns.color_palette('tab20', n_colors=len(df))
+
+    height = max(6, len(df) * 0.4)
+    fig, ax = plt.subplots(figsize=(8, height))
+
+    wedges, texts, autotexts = ax.pie(
+        df['value'],
+        labels=None,
+        startangle=90,
+        colors=colors,
+        wedgeprops={'edgecolor':'white', 'linewidth':1},
+        pctdistance=0.75,
+        autopct=lambda pct: f"{pct:.1f}%" if pct > 1 else ""
+    )
+
+    labels = [
+        f"{sym} ({int(q)} adet)\nK/Z: {pnl:,.2f} ({(pnl/cost*100):+.2f}%)"
+        for sym, q, pnl, cost in zip(
+            df['symbol'], df['quantity'], df['pnl'], df['cost']
+        )
+    ]
+    ax.legend(
+        wedges,
+        labels,
+        title="Portföyünüz",
+        bbox_to_anchor=(1, 0.5),
+        loc="center left",
+        fontsize=10
+    )
+
+    centre_circle = plt.Circle((0, 0), 0.60, fc='white')
+    ax.add_artist(centre_circle)
+    ax.axis('equal')
+    ax.set_title('Portföy Dağılımı', pad=20)
+
+    plt.subplots_adjust(left=0.0, right=0.75, bottom=0.25)
+
+    table_data = [[
+        f"{total_cost:,.2f}",
+        f"{total_value:,.2f}",
+        f"{total_pnl:,.2f} ({total_roi:+.2f}%)"
+    ]]
+    col_labels = ["Maliyet", "Değer", "Kâr/Zarar"]
+    table = ax.table(
+        cellText=table_data,
+        colLabels=col_labels,
+        cellLoc='center',
+        loc='bottom',
+        bbox=[0.0, -0.22, 0.75, 0.15] 
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+
+    plt.tight_layout()
+
+    image_path = os.path.join(download_dir, f"live_portfolio_{chat_id}.png")
+    plt.savefig(image_path, bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    send_photo(chat_id, image_path, caption="*📊 Canlı Portföy Görseliniz*")
+    os.remove(image_path)
+
+
 def send_market_summary_to_all():
     print(f"📤 Gönderim başladı - {datetime.now().strftime('%H:%M:%S')}")
     get_and_save_chat_ids()
@@ -626,47 +705,11 @@ def process_user_requests(last_update_id):
             if text.lower() == "/live":
                 user_portfolio = portfolios.get(str(chat_id), [])
                 if user_portfolio:
-                    msg = "*📊 Canlı Portföyünüz:*\n\n"
-                    total_cost = 0
-                    total_value = 0
-                    total_pl = 0
-                    for item in user_portfolio:
-                        symbol = item["symbol"]
-                        quantity = item["quantity"]
-                        avg_price = item["avg_price"]
-                        try:
-                            t, symbol_full = fetch_ticker(symbol)
-                            price = t.fast_info.get("lastPrice", None)
-                            if price is None:
-                                msg += f"{symbol}: Veri alınamadı\n"
-                                continue
-                            hist = t.history(period="2d", interval="1d")["Close"].dropna()
-                            cost = quantity * avg_price
-                            value = quantity * price
-                            pl = value - cost
-                            total_cost += cost
-                            total_value += value
-                            total_pl += pl
-                            if len(hist) >= 2:
-                                prev_close = hist.iloc[-2]
-                                change = ((price - prev_close) / prev_close) * 100
-                                emoji = "🟢" if change > 0 else "🔴" if change < 0 else "⚪️"
-                                msg += (f"{symbol_full}: {price:,.2f} ({emoji} {change:+.2f}%)\n"
-                                        f"  Adet: {quantity}, Ortalama: {avg_price:,.2f}, K/Z: {pl:,.2f} ({pl/cost*100:+.2f}%)\n")
-                            else:
-                                msg += (f"{symbol_full}: {price:,.2f} (⚪️)\n"
-                                        f"  Adet: {quantity}, Ortalama: {avg_price:,.2f}, K/Z: {pl:,.2f} ({pl/cost*100:+.2f}%)\n")
-                        except Exception as e:
-                            msg += f"{symbol}: Veri alınamadı\n"
-                    if total_cost > 0:
-                        msg += (f"\n*Toplam:*\n"
-                                f"Maliyet: {total_cost:,.2f}\n"
-                                f"Değer: {total_value:,.2f}\n"
-                                f"Kâr/Zarar: {total_pl:,.2f} ({total_pl/total_cost*100:+.2f}%)\n")
-                    send_message(chat_id, msg)
+                    send_live_visualization(chat_id, user_portfolio)
                 else:
-                    send_message(chat_id, "Portföyünüz boş. /add <hisse> <adet> komutuyla portföyünüze hisse ekleyebilirsiniz.")
+                    send_message(chat_id, "Portföyünüz boş. /add <hisse> <adet> ile ekleyebilirsiniz.")
                 continue
+
 
             if text.lower().startswith("/remove "):
                 ticker_to_remove = text[8:].strip().upper()

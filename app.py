@@ -5,7 +5,7 @@ import requests
 import os
 import schedule
 import time
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 from veritabani import TOKEN
 import cloudscraper
 from dotenv import load_dotenv
@@ -18,7 +18,6 @@ from selenium.webdriver.support import expected_conditions as EC
 import glob
 import tempfile
 from bs4 import BeautifulSoup
-
 
 load_dotenv()
 
@@ -44,10 +43,9 @@ assets = {
     '💎 ETH-(USD)': 'ETH-USD',
 }
 
-
 def setup_driver():
     opts = Options()
-    opts.add_argument("--headless=new") 
+    opts.add_argument("--headless=new")
     opts.add_argument("--disable-gpu")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
@@ -73,38 +71,93 @@ def setup_driver():
     print("✅ Chrome başlatıldı, geçici profil:", temp_profile)
     return driver
 
+def download_excel(max_attempts=5, initial_wait=15, retry_wait=10):
+    attempt = 1
+    while attempt <= max_attempts:
+        print(f"📥 Excel indirme denemesi {attempt}/{max_attempts}...")
+        
+        with setup_driver() as driver:
+            driver.get("https://www.tefas.gov.tr/FonKarsilastirma.aspx")
+            try:
+                btn = WebDriverWait(driver, 40).until(
+                    EC.element_to_be_clickable((By.XPATH, '//*[@id="table_fund_returns_wrapper"]//button[3]'))
+                )
+                btn.click()
+
+                print("📥 Excel indirme butonuna tıklandı, bekleniyor...")
+                time.sleep(initial_wait)  
+
+                print("📂 İndirilen klasör içeriği:", os.listdir(download_dir))
+                file = next(iter(glob.glob(os.path.join(download_dir, "*.xls*"))), None)
+
+                if not file:
+                    print("❌ Dosya bulunamadı.")
+                    attempt += 1
+                    time.sleep(retry_wait)
+                    continue
+
+                if os.path.exists(excel_file_path):
+                    os.remove(excel_file_path)
+                os.rename(file, excel_file_path)
+
+                file_size = os.path.getsize(excel_file_path)
+                print(f"📏 Dosya boyutu: {file_size} byte")
+
+                if file_size < 1024:
+                    print(f"❌ Dosya boş görünüyor (boyut: {file_size} byte). Tekrar deneniyor...")
+                    attempt += 1
+                    time.sleep(retry_wait)
+                    continue
 
 
-def download_excel():
-    with setup_driver() as driver:
-        driver.get("https://www.tefas.gov.tr/FonKarsilastirma.aspx")
-        try:
-            btn = WebDriverWait(driver, 40).until(
-                EC.element_to_be_clickable((By.XPATH, '//*[@id="table_fund_returns_wrapper"]//button[3]'))
-            )
-            btn.click()
+                try:
+                    df = pd.read_excel(excel_file_path)
+                    if df.empty:
+                        print("❌ Dosya içeriği boş. Tekrar deneniyor...")
+                        attempt += 1
+                        time.sleep(retry_wait)
+                        continue
+                    else:
+                        print(f"✅ Excel başarıyla indirildi: {excel_file_path}")
+                        print(f"📊 Dosyada {len(df)} satır veri bulundu.")
+                        return True
 
-            print("📥 Excel indirme butonuna tıklandı, bekleniyor...")
-            time.sleep(15)
+                except Exception as e:
+                    print(f"❌ Dosya okunamadı veya bozuk: {e}. Tekrar deneniyor...")
+                    attempt += 1
+                    time.sleep(retry_wait)
+                    continue
 
-            print("📂 Sonraki klasör içeriği:", os.listdir(download_dir))
+            except Exception as e:
+                print(f"❌ Excel indirme hatası: {e}")
+                attempt += 1
+                time.sleep(retry_wait)
+                continue
 
-            file = next(iter(glob.glob(os.path.join(download_dir, "*.xls*"))), None)
-            if not file:
-                print("❌ Dosya bulunamadı.")
-                return False
+    print(f"❌ Maksimum deneme sayısına ulaşıldı ({max_attempts}). Excel dosyası indirilemedi.")
+    return False
 
-            if os.path.exists(excel_file_path):
-                os.remove(excel_file_path)
-            os.rename(file, excel_file_path)
+def check_excel_and_redownload():
+    print(f"📋 Excel dosyası kontrol ediliyor - {datetime.now().strftime('%H:%M:%S')}")
 
-            print("✅ Excel başarıyla indirildi:", excel_file_path)
-            return True
+    if not os.path.exists(excel_file_path):
+        print("🔔 Excel dosyası bulunamadı, tekrar indiriliyor...")
+        download_excel()
+        return
 
-        except Exception as e:
-            print(f"❌ Excel indirme hatası: {e}")
-            return False
+    try:
+        df = pd.read_excel(excel_file_path)
+        row_count = len(df)
 
+        if row_count < 10:
+            print(f"🔔 Excel dosyasında {row_count} satır var (10'dan az). Tekrar indiriliyor...")
+            download_excel()
+        else:
+            print(f"✅ Excel dosyasında {row_count} satır var, sorun yok.")
+
+    except Exception as e:
+        print(f"❌ Excel dosyası okunurken hata: {e}. Tekrar indiriliyor...")
+        download_excel()
 
 def fetch_fon_data(kullanici_fon, chat_id):
     if not os.path.exists(excel_file_path):
@@ -154,16 +207,16 @@ def fetch_fon_data(kullanici_fon, chat_id):
         send_message(chat_id, msg)
 
     headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept-Language': 'tr-TR,tr;q=0.9',
-    'Referer': 'https://www.tefas.gov.tr/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'tr-TR,tr;q=0.9',
+        'Referer': 'https://www.tefas.gov.tr/',
     }
     cookies = {
-    'ASP.NET_SessionId': 'xyz123',
+        'ASP.NET_SessionId': 'xyz123',
     }
 
     try:
-        with requests.get(f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={kullanici_fon}", headers=headers, cookies=cookies , timeout=10) as url:
+        with requests.get(f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={kullanici_fon}", headers=headers, cookies=cookies, timeout=10) as url:
             data = url.content
         soup = BeautifulSoup(data, features="html.parser")
         js_text = soup.find_all('script', type="text/javascript")
@@ -249,18 +302,30 @@ def deactivate_user(chat_id):
 def load_portfolios():
     portfolios = {}
     try:
-        result = supabase.table("portfolios").select("chat_id", "symbol").execute()
+        result = supabase.table("portfolios").select("chat_id", "symbol", "quantity", "avg_price").execute()
         for row in result.data:
-            portfolios.setdefault(str(row["chat_id"]), []).append(row["symbol"])
+            chat_id = str(row["chat_id"])
+            if chat_id not in portfolios:
+                portfolios[chat_id] = []
+            portfolios[chat_id].append({
+                "symbol": row["symbol"],
+                "quantity": row["quantity"],
+                "avg_price": row["avg_price"]
+            })
     except Exception as e:
         print(f"Portföyler yüklenirken hata: {e}")
     return portfolios
 
-def save_portfolio(chat_id, symbols):
+def save_portfolio(chat_id, portfolio):
     try:
         supabase.table("portfolios").delete().eq("chat_id", chat_id).execute()
-        for symbol in symbols:
-            supabase.table("portfolios").insert({"chat_id": chat_id, "symbol": symbol}).execute()
+        for item in portfolio:
+            supabase.table("portfolios").insert({
+                "chat_id": chat_id,
+                "symbol": item["symbol"],
+                "quantity": item["quantity"],
+                "avg_price": item["avg_price"]
+            }).execute()
     except Exception as e:
         print(f"{chat_id} için portföy kaydedilirken hata: {e}")
 
@@ -378,9 +443,16 @@ def send_market_summary_to_all():
         chat_portfolio = portfolios.get(str(chat_id), [])
         msg = f"*📊 Günlük Piyasa Özeti - {datetime.now():%d.%m.%Y}*\n\n"
         df_all = pd.DataFrame()
+        total_cost = 0
+        total_value = 0
+        total_pl = 0
 
         if chat_portfolio:
-            for symbol in chat_portfolio:
+            msg += "*Portföyünüz:*\n"
+            for item in chat_portfolio:
+                symbol = item["symbol"]
+                quantity = item["quantity"]
+                avg_price = item["avg_price"]
                 try:
                     t, symbol_full = fetch_ticker(symbol)
                     hist = t.history(period="5d", interval="1d")["Close"].dropna()
@@ -395,13 +467,32 @@ def send_market_summary_to_all():
                         prev_close = hist.iloc[-2]
                         change = ((current_price - prev_close) / prev_close) * 100
                         emoji = "🟢" if change > 0 else "🔴" if change < 0 else "⚪️"
-                        msg += f"{symbol_full}: {current_price:,.2f} ({emoji} {change:+.2f}%)\n"
+                        cost = quantity * avg_price
+                        value = quantity * current_price
+                        pl = value - cost
+                        total_cost += cost
+                        total_value += value
+                        total_pl += pl
+                        msg += (f"{symbol_full}: {current_price:,.2f} ({emoji} {change:+.2f}%)\n"
+                                f"  Adet: {quantity}, Ortalama: {avg_price:,.2f}, K/Z: {pl:,.2f} ({pl/cost*100:+.2f}%)\n")
                     else:
                         current_price = hist.iloc[-1]
-                        msg += f"{symbol_full}: {current_price:,.2f} (⚪️ Değişim yok)\n"
+                        cost = quantity * avg_price
+                        value = quantity * current_price
+                        pl = value - cost
+                        total_cost += cost
+                        total_value += value
+                        total_pl += pl
+                        msg += (f"{symbol_full}: {current_price:,.2f} (⚪️ Değişim yok)\n"
+                                f"  Adet: {quantity}, Ortalama: {avg_price:,.2f}, K/Z: {pl:,.2f} ({pl/cost*100:+.2f}%)\n")
                 except Exception as e:
                     msg += f"{symbol}: Veri alınamadı\n"
                     print(f"{symbol} için hata: {str(e)}")
+            if total_cost > 0:
+                msg += (f"\n*Toplam:*\n"
+                        f"Maliyet: {total_cost:,.2f}\n"
+                        f"Değer: {total_value:,.2f}\n"
+                        f"Kâr/Zarar: {total_pl:,.2f} ({total_pl/total_cost*100:+.2f}%)\n")
         else:
             for name, symbol in assets.items():
                 try:
@@ -465,16 +556,16 @@ def process_user_requests(last_update_id):
                 save_user(chat_id)
                 send_message(chat_id, "*📈 Hoş Geldiniz!*\n\n"
                     "Bu bot ile hisse senedi, fon ve piyasa verilerini takip edebilirsiniz.\n"
-                    "- Günlük piyasa özetleri için 12:00 ve 18:00 saatlerinde bildirim alırsınız.\n"
+                    "- Günlük piyasa özetleri için 09:00 ve 15:00 saatlerinde bildirim alırsınız.\n"
                     "- Bir hisse sembolü (örneğin: BIMAS) veya fon kodu (örneğin: TLY) yazarak anlık fiyatını, analizlerini ve grafiğini görüntüleyebilirsiniz.\n"
-                    "/add <hisse> ile portföyünüze hisse ekleyebilir,\n"
-                    "/remove <hisse> ile portföyünüzden çıkarabilir,\n"
-                    "/portfoy ile portföyünüzü görebilir,\n"
-                    "/stop ile bildirimleri durdurabilirsiniz.\n"
-                    "/live ile portfoy hisse ve kripto paralarınızın canlı fiyatlarını ve düne göre değişimlerini görebilirsiniz.\n" 
-                    "/alert <hisse> <fiyat> ile hedef fiyat alarmı oluşturabilirsiniz.\n"
-                    "/remove\\_alert <hisse> ile hedef fiyat alarmını kaldırabilirsiniz.\n"
-                    "/alert\\_list ile aktif alarmlarınızı görebilirsiniz.\n\n"
+                    "- /add <hisse> <adet> ile portföyünüze hisse ekleyebilir,\n"
+                    "- /remove <hisse> ile котороеportföyünüzden çıkarabilir,\n"
+                    "- /portfoy ile portföyünüzü görebilir,\n"
+                    "- /stop ile bildirimleri durdurabilirsiniz.\n"
+                    "- /live ile portföy hisse ve kripto paralarınızın canlı fiyatlarını, düne göre değişimlerini ve kâr/zararınızı görebilirsiniz.\n"
+                    "- /alert <hisse> <fiyat> ile hedef fiyat alarmı oluşturabilirsiniz.\n"
+                    "- /remove_alert <hisse> ile hedef fiyat alarmını kaldırabilirsiniz.\n"
+                    "- /alert_list ile aktif alarmlarınızı görebilirsiniz.\n\n"
                 )
                 print(f"✅ Yeni kullanıcı: {chat_id}")
                 continue
@@ -487,31 +578,62 @@ def process_user_requests(last_update_id):
                 continue
 
             if text.lower().startswith("/add "):
-                ticker_to_add = text[5:].strip().upper()
                 try:
-                    t, _ = fetch_ticker(ticker_to_add)
-                    price = t.fast_info.get("lastPrice", None)
-                    if price is None:
-                        send_message(chat_id, f"🔔 *{ticker_to_add}* bulunamadı.")
-                        continue  
-                except Exception:
-                    send_message(chat_id, f"🔔 *{ticker_to_add}* bulunamadı.")
-                    continue
+                    parts = text.split()
+                    if len(parts) != 3:
+                        send_message(chat_id, "Lütfen doğru formatta girin: /add HİSSE ADET")
+                        continue
+                    ticker_to_add = parts[1].strip().upper()
+                    quantity = float(parts[2].strip())
+                    if quantity <= 0:
+                        send_message(chat_id, "Adet pozitif bir sayı olmalıdır.")
+                        continue
 
-                portfolios.setdefault(str(chat_id), [])
-                if ticker_to_add in portfolios[str(chat_id)]:
-                    send_message(chat_id, f"🔔 *{ticker_to_add}* zaten portföyünüzde mevcut.")
-                else:
-                    portfolios[str(chat_id)].append(ticker_to_add)
-                    send_message(chat_id, f"✅ *{ticker_to_add}* portföyünüze eklendi.")
-                save_portfolio(chat_id, portfolios[str(chat_id)])
+                    t, symbol_full = fetch_ticker(ticker_to_add)
+                    current_price = t.fast_info.get("lastPrice", None)
+                    if current_price is None:
+                        send_message(chat_id, f"🔔 *{ticker_to_add}* bulunamadı.")
+                        continue
+
+                    portfolios.setdefault(str(chat_id), [])
+                    existing_stock = next((item for item in portfolios[str(chat_id)] if item["symbol"] == ticker_to_add), None)
+
+                    if existing_stock:
+                        old_quantity = existing_stock["quantity"]
+                        old_avg_price = existing_stock["avg_price"]
+                        new_quantity = old_quantity + quantity
+                        new_avg_price = ((old_quantity * old_avg_price) + (quantity * current_price)) / new_quantity
+                        existing_stock["quantity"] = new_quantity
+                        existing_stock["avg_price"] = new_avg_price
+                        send_message(chat_id, f"✅ *{ticker_to_add}* portföyünüze eklendi.\n"
+                                             f"Yeni adet: {new_quantity}, Ortalama fiyat: {new_avg_price:,.2f}")
+                    else:
+                        portfolios[str(chat_id)].append({
+                            "symbol": ticker_to_add,
+                            "quantity": quantity,
+                            "avg_price": current_price
+                        })
+                        send_message(chat_id, f"✅ *{ticker_to_add}* portföyünüze eklendi.\n"
+                                             f"Adet: {quantity}, Alış fiyatı: {current_price:,.2f}")
+
+                    save_portfolio(chat_id, portfolios[str(chat_id)])
+                except ValueError:
+                    send_message(chat_id, "Lütfen geçerli bir adet girin.")
+                except Exception as e:
+                    send_message(chat_id, f"🔔 *{ticker_to_add}* eklenirken hata: {e}")
                 continue
 
             if text.lower() == "/live":
                 user_portfolio = portfolios.get(str(chat_id), [])
                 if user_portfolio:
                     msg = "*📊 Canlı Portföyünüz:*\n\n"
-                    for symbol in user_portfolio:
+                    total_cost = 0
+                    total_value = 0
+                    total_pl = 0
+                    for item in user_portfolio:
+                        symbol = item["symbol"]
+                        quantity = item["quantity"]
+                        avg_price = item["avg_price"]
                         try:
                             t, symbol_full = fetch_ticker(symbol)
                             price = t.fast_info.get("lastPrice", None)
@@ -519,36 +641,59 @@ def process_user_requests(last_update_id):
                                 msg += f"{symbol}: Veri alınamadı\n"
                                 continue
                             hist = t.history(period="2d", interval="1d")["Close"].dropna()
+                            cost = quantity * avg_price
+                            value = quantity * price
+                            pl = value - cost
+                            total_cost += cost
+                            total_value += value
+                            total_pl += pl
                             if len(hist) >= 2:
                                 prev_close = hist.iloc[-2]
                                 change = ((price - prev_close) / prev_close) * 100
                                 emoji = "🟢" if change > 0 else "🔴" if change < 0 else "⚪️"
-                                msg += f"{symbol_full}: {price:,.2f} ({emoji} {change:+.2f}%)\n"
+                                msg += (f"{symbol_full}: {price:,.2f} ({emoji} {change:+.2f}%)\n"
+                                        f"  Adet: {quantity}, Ortalama: {avg_price:,.2f}, K/Z: {pl:,.2f} ({pl/cost*100:+.2f}%)\n")
                             else:
-                                msg += f"{symbol_full}: {price:,.2f} (⚪️)\n"
+                                msg += (f"{symbol_full}: {price:,.2f} (⚪️)\n"
+                                        f"  Adet: {quantity}, Ortalama: {avg_price:,.2f}, K/Z: {pl:,.2f} ({pl/cost*100:+.2f}%)\n")
                         except Exception as e:
                             msg += f"{symbol}: Veri alınamadı\n"
+                    if total_cost > 0:
+                        msg += (f"\n*Toplam:*\n"
+                                f"Maliyet: {total_cost:,.2f}\n"
+                                f"Değer: {total_value:,.2f}\n"
+                                f"Kâr/Zarar: {total_pl:,.2f} ({total_pl/total_cost*100:+.2f}%)\n")
                     send_message(chat_id, msg)
                 else:
-                    send_message(chat_id, "Portföyünüz boş. /add <hisse> komutuyla portföyünüze hisse ekleyebilirsiniz.")
+                    send_message(chat_id, "Portföyünüz boş. /add <hisse> <adet> komutuyla portföyünüze hisse ekleyebilirsiniz.")
                 continue
 
             if text.lower().startswith("/remove "):
                 ticker_to_remove = text[8:].strip().upper()
-                if str(chat_id) in portfolios and ticker_to_remove in portfolios[str(chat_id)]:
-                    portfolios[str(chat_id)].remove(ticker_to_remove)
-                    send_message(chat_id, f"✅ *{ticker_to_remove}* portföyünüzden çıkarıldı.")
-                    save_portfolio(chat_id, portfolios[str(chat_id)])
-                else:
+                
+                current_portfolio = load_portfolios().get(str(chat_id), [])
+                
+                if not current_portfolio:
                     send_message(chat_id, f"🔔 *{ticker_to_remove}* portföyünüzde bulunamadı.")
+                    continue
+                
+                updated_portfolio = [item for item in current_portfolio if item["symbol"] != ticker_to_remove]
+                
+                if len(updated_portfolio) == len(current_portfolio):
+                    send_message(chat_id, f"🔔 *{ticker_to_remove}* portföyünüzde bulunamadı.")
+                else:
+                    save_portfolio(chat_id, updated_portfolio)
+                    send_message(chat_id, f"✅ *{ticker_to_remove}* portföyünüzden çıkarıldı.")
                 continue
 
             if text.lower() == "/portfoy":
                 user_portfolio = portfolios.get(str(chat_id), [])
                 if user_portfolio:
-                    port_text = "*📋 Portföyünüz:*\n" + "\n".join(f"- {ticker}" for ticker in user_portfolio)
+                    port_text = "*📋 Portföyünüz:*\n"
+                    for item in user_portfolio:
+                        port_text += f"- {item['symbol']}: {item['quantity']} adet, Ortalama: {item['avg_price']:,.2f}\n"
                 else:
-                    port_text = "Portföyünüz boş. /add <hisse> komutuyla portföyünüze hisse ekleyebilirsiniz."
+                    port_text = "Portföyünüz boş. /add <hisse> <adet> komutuyla portföyünüze hisse ekleyebilirsiniz."
                 send_message(chat_id, port_text)
                 continue
 
@@ -703,6 +848,7 @@ if __name__ == "__main__":
     schedule.every().day.at("15:00").do(send_market_summary_to_all)
     schedule.every(2).minutes.do(check_alerts)
     schedule.every().day.at("12:00").do(download_excel)
+    schedule.every().hour.do(check_excel_and_redownload)
 
     while True:
         schedule.run_pending()

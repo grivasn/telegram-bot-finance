@@ -859,6 +859,7 @@ def process_user_requests(last_update_id):
                     plt.plot(df[ma], label=ma)
             plt.title(f"{symbol} - 1 Yıllık Grafiği")
             plt.legend()
+            plt.grid(False)
             image_path = f"chart_{symbol.replace('.','')}.png"
             plt.savefig(image_path)
             plt.close()

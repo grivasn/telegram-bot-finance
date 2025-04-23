@@ -838,6 +838,7 @@ def process_user_requests(last_update_id):
 
                     öneri_image_path = f"oneriler_{text.upper()}.png"
                     plt.tight_layout()
+                    plt.grid(False)
                     plt.savefig(öneri_image_path, bbox_inches="tight", dpi=200)
                     plt.close()
 

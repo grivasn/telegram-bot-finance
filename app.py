@@ -521,67 +521,37 @@ def send_market_summary_to_all():
     for chat_id in users:
         chat_portfolio = portfolios.get(str(chat_id), [])
         msg = f"*📊 Günlük Piyasa Özeti - {datetime.now():%d.%m.%Y}*\n\n"
-        df_all = pd.DataFrame()
-        total_cost = 0
-        total_value = 0
-        total_pl = 0
 
         if chat_portfolio:
             msg += "*Portföyünüz:*\n"
             for item in chat_portfolio:
                 symbol = item["symbol"]
-                quantity = item["quantity"]
-                avg_price = item["avg_price"]
                 try:
                     t, symbol_full = fetch_ticker(symbol)
                     hist = t.history(period="5d", interval="1d")["Close"].dropna()
                     hist.index = pd.to_datetime(hist.index.date)
                     hist = hist[~hist.index.duplicated(keep="last")]
-                    hist.name = symbol_full
-
-                    df_all = df_all.join(hist, how="outer")
 
                     if len(hist) >= 2:
                         current_price = hist.iloc[-1]
                         prev_close = hist.iloc[-2]
                         change = ((current_price - prev_close) / prev_close) * 100
                         emoji = "🟢" if change > 0 else "🔴" if change < 0 else "⚪️"
-                        cost = quantity * avg_price
-                        value = quantity * current_price
-                        pl = value - cost
-                        total_cost += cost
-                        total_value += value
-                        total_pl += pl
-                        msg += (f"{symbol_full}: {current_price:,.2f} ({emoji} {change:+.2f}%)\n"
-                                f"  Adet: {quantity}, Ortalama: {avg_price:,.2f}, K/Z: {pl:,.2f} ({pl/cost*100:+.2f}%)\n")
+                        msg += f"{symbol_full}: {current_price:,.2f} ({emoji} {change:+.2f}%)\n"
                     else:
                         current_price = hist.iloc[-1]
-                        cost = quantity * avg_price
-                        value = quantity * current_price
-                        pl = value - cost
-                        total_cost += cost
-                        total_value += value
-                        total_pl += pl
-                        msg += (f"{symbol_full}: {current_price:,.2f} (⚪️ Değişim yok)\n"
-                                f"  Adet: {quantity}, Ortalama: {avg_price:,.2f}, K/Z: {pl:,.2f} ({pl/cost*100:+.2f}%)\n")
+                        msg += f"{symbol_full}: {current_price:,.2f} (⚪️ Değişim yok)\n"
                 except Exception as e:
                     msg += f"{symbol}: Veri alınamadı\n"
                     print(f"{symbol} için hata: {str(e)}")
-            if total_cost > 0:
-                msg += (f"\n*Toplam:*\n"
-                        f"Maliyet: {total_cost:,.2f}\n"
-                        f"Değer: {total_value:,.2f}\n"
-                        f"Kâr/Zarar: {total_pl:,.2f} ({total_pl/total_cost*100:+.2f}%)\n")
         else:
+            msg += "*Piyasa Özeti:*\n"
             for name, symbol in assets.items():
                 try:
                     t = yf.Ticker(symbol)
                     hist = t.history(period="5d", interval="1d")["Close"].dropna()
                     hist.index = pd.to_datetime(hist.index.date)
                     hist = hist[~hist.index.duplicated(keep="last")]
-                    hist.name = symbol
-
-                    df_all = df_all.join(hist, how="outer")
 
                     if len(hist) >= 2:
                         current_price = hist.iloc[-1]
